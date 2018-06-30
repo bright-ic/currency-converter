@@ -140,7 +140,7 @@ class CurrencyConverter {
      method that fetches the list of available currencies from the api online
     */
     getAllCurrencies() {
-        fetch('http://free.currencyconverterapi.com/api/v5/currencies').then(response => {
+        fetch('https://free.currencyconverterapi.com/api/v5/currencies').then(response => {
             return response.json();
         }).then(response => {
             let currencies = Object.values(response.results);
@@ -189,7 +189,7 @@ class CurrencyConverter {
         toCurrency = encodeURIComponent(toCurrency);
         let query = fromCurrency + '_' + toCurrency;
 
-        return fetch('http://free.currencyconverterapi.com/api/v5/convert?q='+ query + '&compact=ultra').then(response => {
+        return fetch('https://free.currencyconverterapi.com/api/v5/convert?q='+ query + '&compact=ultra').then(response => {
             return response.json();
         }).then(response => {
              /*appStatus denotes where currency rate was obtained from
