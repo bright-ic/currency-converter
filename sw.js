@@ -17,8 +17,8 @@ self.addEventListener('install', function(event) {
       caches.open(staticCacheName).then(function(cache) {
         console.log('service worker installed successfully.');
         return cache.addAll(filesToCache);
-      })
-    ).catch( error => console.log('failed to cache: ' + error));
+      }).catch( error => console.log('failed to cache: ' + error))
+    );
   });
   //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
   self.addEventListener('activate', function(event) {
