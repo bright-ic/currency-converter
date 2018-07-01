@@ -146,7 +146,7 @@ class CurrencyConverter {
         this.showCachedCurrencies(); // call to method that gets currencies from cache and renders it on the page.
         
         // fetch currencies from network also and update the page and the cache if fetched
-        fetch('http://free.currencyconverterapi.com/api/v5/currencies').then(response => {
+        fetch('https://free.currencyconverterapi.com/api/v5/currencies').then(response => {
             return response.json();
         }).then(response => {
             let currencies = Object.values(response.results);
@@ -203,7 +203,7 @@ class CurrencyConverter {
 
         this.fetchStatus.fetchedExRateFromNetwork = false; //set network fetch status to false. 
         // fetch currency exchange rate from network also and update the page and the cache if fetched
-        fetch('http://free.currencyconverterapi.com/api/v5/convert?q='+ query + '&compact=ultra').then(response => {
+        fetch('https://free.currencyconverterapi.com/api/v5/convert?q='+ query + '&compact=ultra').then(response => {
             return response.json();
         }).then(response => {
             const currencyRate = response[Object.keys(response)]; // get the exchange rate 
