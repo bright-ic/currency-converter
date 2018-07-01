@@ -14,7 +14,7 @@ const filesToCache = [
 self.addEventListener('install', event => {
     console.log('Installing service worker.');
     event.waitUntil(
-      caches.open(staticCacheName).then( cache => {
+      caches.open('BrightsCurrencyConverter-static-v4').then( cache => {
         console.log('service worker installed successfully.');
         return cache.addAll(filesToCache);
       })
