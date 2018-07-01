@@ -4,13 +4,20 @@ class CurrencyConverter {
         this.registerServiceWorker();
         this.dbPromise = this.openDatabase();
         this.getAllCurrencies();
+        this.networkFetchStatus = {fetchedCurrencies: false, fetchedCurrencyRate: false};
+        this.fetchStatus = {
+            fetchedCurFromNetwork: false, 
+            fetchedExRateFromNetwork: false, 
+            fetchedExRateFromCache: 0,
+            fetchedExRateFromCacheErrStatus: 0
+        };
     }
     /* ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
      method that registers service worker
     */
     registerServiceWorker() {
         if (!navigator.serviceWorker) return;
-        navigator.serviceWorker.register('sw.js').then(reg => {});
+        navigator.serviceWorker.register('/sw.js').then(reg => {});
     } // close registerServiceWorker method
     /* ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
      create/open an indexDB database
@@ -42,7 +49,7 @@ class CurrencyConverter {
             
             let tx = db.transaction('currencies', 'readwrite'); // create a transaction 
             let store = tx.objectStore('currencies'); // access currencies the object store
-            // loop through the currencies object and add them to the currencies object store
+            // loop through the currencies array and add them to the currencies object store
             for (const currency of currencies) {
                 store.put(currency, currency.id);
             }
@@ -57,7 +64,7 @@ class CurrencyConverter {
                 return cursor.continue().then(deleteRest);
             });
         }).then(() => {
-            console.log('list of currencies added to cache (db)');
+            console.log('Currencies object store cache (db) updated successfully.');
          }).catch(error => console.log('Something went wrong: '+ error));
     }
     /* +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -98,16 +105,18 @@ class CurrencyConverter {
 
            return store.index('query').get(query);
         }).then( RateObj => { 
-                   const currencyRate  = RateObj.rate;
-                    return {currencyRate, appStatus: 'offline'}; // return the currency rate value
+                   const exchangeRate  = RateObj.rate;
+                   this.fetchStatus.fetchedExRateFromCacheErrStatus = 200; // set exchange rate cache flag: this means rate was found
+
+                    return exchangeRate; // return the currency rate value
          }).catch(error => {
-             console.log('Sorry! No rate was found in the cache:');
-             this.postToHTMLPage('','No rate was found in the cache');
+             //console.log('Sorry! No rate was found in the cache:');
+            this.fetchStatus.fetchedExRateFromCacheErrStatus = 404; // unset exchange rate cache flag: no exchange rate was found
              return error;
         });
     }
     //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    // method that gets all cached currencies and display them on select field through postToHTMLPage method.
+    // method that gets all cached currencies and display them on select field through appendCurrenciesToHTMLSelectFieldss method.
     showCachedCurrencies() {
         return this.dbPromise.then( db => {
 
@@ -118,20 +127,12 @@ class CurrencyConverter {
         
             return index.getAll().then( currencies => {
                 console.log('Currencies fetched from cache');
-
-                let selectFields = document.querySelectorAll('select.currency');
-
-                //loop through the returned currencies from the cache
-                for(const currency of currencies){
-                    let option = this.createElement('option');
-                    if(currency.hasOwnProperty('currencySymbol')) option.text = `${currency.currencyName} (${currency.currencySymbol})`;
-                    else option.text = `${currency.currencyName} (${currency.id})`;
-                    option.value = currency.id;
-
-                    //add currency to the select field
-                    this.appendElement(selectFields,option);
+                /* before displaying fetched currencies from cache, check if currencies from network has been displayed
+                    if not, go ahead and display cached currencies*/
+                if(!this.fetchStatus.fetchedCurFromNetwork){
+                     // display fected currencies in currency selection fields of html page
+                    this.appendCurrenciesToHTMLSelectFields(currencies); // call to the method adds currencies to select fieldss.
                 }
-                this.postToHTMLPage('msg', 'you are offline');
             });
           });
     }
@@ -140,42 +141,38 @@ class CurrencyConverter {
      method that fetches the list of available currencies from the api online
     */
     getAllCurrencies() {
-        fetch('https://free.currencyconverterapi.com/api/v5/currencies').then(response => {
+        // Attempt to fetch currencies from cache and from network simultaneously.
+        //fetch currencies from cache and display on page
+        this.showCachedCurrencies(); // call to method that gets currencies from cache and renders it on the page.
+        
+        // fetch currencies from network also and update the page and the cache if fetched
+        fetch('http://free.currencyconverterapi.com/api/v5/currencies').then(response => {
             return response.json();
         }).then(response => {
             let currencies = Object.values(response.results);
-            let selectFields = document.querySelectorAll('select.currency');
-
-            //loop through the returned currencies from the api
-            for(const currency of Object.values(currencies)){
-                let option = this.createElement('option');
-                if(currency.hasOwnProperty('currencySymbol')) option.text = `${currency.currencyName} (${currency.currencySymbol})`;
-                else option.text = `${currency.currencyName} (${currency.id})`;
-                 option.value = currency.id;
-
-                 //add currency to the select field
-                 this.appendElement(selectFields,option);
-            }
+            // display fected currencies in currency selection fields of html page
+            this.appendCurrenciesToHTMLSelectFields(Object.values(currencies)); // call to method that displays currencies 
+            this.fetchStatus.fetchedCurFromNetwork = true; // set flag to true, currency was fetched from network
             // add the currencies to cache
             this.addCurrenciesToCache(currencies); // call to the method that stores returned currencies to cache.
-            this.postToHTMLPage('msg','you are online');
+            
            
         }).catch( error => {
-            console.log('It looks like your are offline or have a bad network: '+ error);
-            this.showCachedCurrencies(); // get currencies from cache since user is offline.
+            console.log('It looks like your are offline or have a bad network: '+ error); 
         });
     }
     //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    // Method that handles html page/ DOM communication
+    // Method that displays messages and results on the index pages
     postToHTMLPage(wht, msg, outputResult = {}) {
        if(wht === 'result') { // show result after conversion
             document.getElementById('result').innerHTML = `${outputResult.toCurrency} ${outputResult.result.toFixed(2)}`;
         }
-        else if(wht = 'offlineFailure') {
+        else if(wht === 'offlineFailure' && this.fetchStatus.fetchedExRateFromCacheErrStatus !== 200) {
             document.getElementById('result').innerHTML = '0.00';
+            document.getElementById('alert').innerHTML = msg;
         }
 
-        if(msg !== ''){
+        if(msg !== '' && wht !== 'offlineFailure'){
             // show user that he is online or offline.
             document.getElementById('alert').innerHTML = msg;
         }
@@ -184,55 +181,90 @@ class CurrencyConverter {
     /* ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
      method that calls the currency api for conversion rate.
     */
-    getConversionRate(fromCurrency, toCurrency) {
+    getConversionRate(fromCurrency, toCurrency, amount) {
         fromCurrency = encodeURIComponent(fromCurrency);
         toCurrency = encodeURIComponent(toCurrency);
         let query = fromCurrency + '_' + toCurrency;
 
-        return fetch('https://free.currencyconverterapi.com/api/v5/convert?q='+ query + '&compact=ultra').then(response => {
+        // Attempt to fetch currency exchange rate from cache and from network simultaneously.
+        //fetch currency exchange rate from cache for calculation
+        this.fetchStatus.fetchedExRateFromCacheErrStatus = 0; // set flag to 0: this means a request to fetch rate from cache has been initiated
+        this.getCurrencyRateFromCache(fromCurrency, toCurrency).then( currencyRate => {
+            
+             /* before performing exchange calculation, check if exchange rate from network has been fetched and calculation performed
+                    if not, go ahead and perform exchange calculation with rate from catch*/
+            if(!this.fetchStatus.fetchedExRateFromNetwork && this.fetchStatus.fetchedExRateFromCacheErrStatus !== 404){
+                if(this.fetchStatus.fetchedExRateFromCacheErrStatus === 200) // perform exchange calculation if exchange rate was returned from cache
+                {
+                     this.proccessExchange(amount, currencyRate, toCurrency); // perform exchange calculation and diplay in html
+                 }
+            }
+        });
+
+        this.fetchStatus.fetchedExRateFromNetwork = false; //set network fetch status to false. 
+        // fetch currency exchange rate from network also and update the page and the cache if fetched
+        fetch('http://free.currencyconverterapi.com/api/v5/convert?q='+ query + '&compact=ultra').then(response => {
             return response.json();
         }).then(response => {
-             /*appStatus denotes where currency rate was obtained from
-            online means currency rate was obtained from api call while
-            offline means it was obtained from cache*/
-
-            const currencyRate = response[Object.keys(response)]; // get the conversion rate 
-            return  {currencyRate, appStatus: 'online'};
+            const currencyRate = response[Object.keys(response)]; // get the exchange rate 
+            //console.log('rate gotten from network');
+            this.proccessExchange(amount, currencyRate, toCurrency); // perform exchange calculation and display the result
+           
+           this.addCurrencyRateToCache(currencyRate, fromCurrency, toCurrency); // update cache with exchange rate obtained from api
+           this.fetchStatus.fetchedExRateFromNetwork = true;
         }).catch(error => {
-           /* currency rate was gotten from cache, 
-            set appStatus to offline*/
-
-            // It looks like user is offline;
-            // call the method that gets the currency rate from cache when user if offline
-            const currencyRate = this.getCurrencyRateFromCache(fromCurrency, toCurrency);
-            return  currencyRate;
+            this.postToHTMLPage('offlineFailure', 'It looks like you are offline. Go online to fully experience the functionalities of this app.');
+           /* currency rate was gotten from cache*/
         });
     }
-     /* ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-     method that creates html element
-    */
-    createElement(element) {
-        return document.createElement(element);
-        return;
+    /* ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    Method that performs exchange calculation*/
+    proccessExchange(amount, rate, toCurrency) {
+       if(rate !== undefined)
+       {
+           const result = amount * rate; // performs currency convertion
+       
+           // set conversion exchange rate msg.
+           let msg = "Exchange rate : " + rate;
+           this.postToHTMLPage('result', msg, {result, toCurrency}); // call to method that handles dom communication.
+       }
+       else this.postToHTMLPage('msg', 'You are offline. Go online to fully experience the functionalities of this app.');
+       
     }
      /* ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-     method that appends html element to a parent html element
-    */
-   appendElement(parentElement, element)
-   {
-       let element2 = element.cloneNode(true); // clone option element 
-       // add element (option element with currency name) to parent alement(select field)
-       parentElement[0].appendChild(element);
-       parentElement[1].appendChild(element2);
-       return;
-   }
+         method that handles fetched currencies and adds it to html select fields*/
+    appendCurrenciesToHTMLSelectFields(currencies) {
+
+        let selectFields = document.querySelectorAll('select.currency');
+        selectFields[0].options.length = 0; // clear the content of from currency select field
+        selectFields[1].options.length = 0; // clear the content of to currency select fields
+
+        //loop through the returned currencies from the api
+        for(const currency of currencies){
+            let optionElement = document.createElement('option');
+            if(currency.hasOwnProperty('currencySymbol')) optionElement.text = `${currency.currencyName} (${currency.currencySymbol})`;
+            else optionElement.text = `${currency.currencyName} (${currency.id})`;
+                optionElement.value = currency.id;
+
+             //add currency to the select field
+             let optionElement2 = optionElement.cloneNode(true); // clone option element 
+             // add element (option element with currency name) to parent alement(select field)
+             selectFields[0].appendChild(optionElement);
+             selectFields[1].appendChild(optionElement2);
+
+             //this.appendElement(selectFields,option);
+        }
+        return;
+    }
+     /* ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
+
 } // close class
 //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 
 
 
-(function(){
+(() => {
     const converter = new CurrencyConverter(); // create an instance of CurrencyConverter class
 
     // add event listener to the convertion button in the index page
@@ -251,31 +283,12 @@ class CurrencyConverter {
         else if (fromCurrency === toCurrency) msg = 'Please choose a different currency to convert to.';
         else {
             // call the method that calls currency api to get conversion rate
-            converter.getConversionRate(fromCurrency,toCurrency).then( response =>{ 
-                 const rate = response.currencyRate;
-                 const appStatus = response.appStatus; // get state of user when currency rate was obtained
-                if(rate !== undefined)
-                {
-                    const result = amount * rate; // performs currency convertion
-                
-                    // set conversion rate msg.
-                    msg = "Exchange rate : " + rate;
-                    converter.postToHTMLPage('result', msg, {result, toCurrency}); // call to method that handles dom communication.
-                    // add conversion rate to cache if currency rate was obtained from api
-                    if(appStatus ==='online')  converter.addCurrencyRateToCache(rate, fromCurrency, toCurrency); 
-                }
-                else converter.postToHTMLPage('offlineFailure', 'You are offline. Go online to fully experience the functionalities of this app.');
-            }).catch( error => {
-                console.log('No rate was found in the cache: ');
-                converter.postToHTMLPage('', error);
-            });
+            converter.getConversionRate(fromCurrency,toCurrency, amount);
         }
     
-        converter.postToHTMLPage('msg', msg); // call to method that handles dom communication.  
+       if(msg !== '') converter.postToHTMLPage('msg', msg); // call to method that handles dom communication.  
     });
 
 
 })();
-/* ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-     function that handles conversion
- */
+/* ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
