@@ -2,7 +2,7 @@ const staticCacheName = 'BrightsCurrencyConverter-static-v4';
 
 // files to cache
 const filesToCache = [
-  '/',
+  './',
   './index.html',
   './scripts/appcontroller.js',
   './css/styles.css',
@@ -11,27 +11,28 @@ const filesToCache = [
   'https://fonts.googleapis.com/css?family=Roboto:regular,bold,italic,thin,light,bolditalic,black,medium&amp;lang=en'
 ];
 
-self.addEventListener('install', event => {
+self.addEventListener('install', function(event) {
     console.log('Installing service worker.');
     event.waitUntil(
-      caches.open('BrightsCurrencyConverter-static-v4').then( cache => {
+      caches.open(staticCacheName).then(function(cache) {
         console.log('service worker installed successfully.');
         return cache.addAll(filesToCache);
-      })
+      }).catch( error => console.log('failed to cache: ' + error))
     );
   });
   //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-  self.addEventListener('activate', event => {
+  self.addEventListener('activate', function(event) {
     console.log('service worker activated successfully');
     event.waitUntil(
-      caches.keys().then( cacheNames => {
+      caches.keys().then(function(cacheNames) {
         return Promise.all(
-          cacheNames.filter(cacheName => {
+          cacheNames.filter(function(cacheName) {
              // console.log(cacheName);
             return cacheName.startsWith('BrightsCurrencyConverter-') && staticCacheName !== cacheName;
-          }).map( cacheName => {
+          }).map(function(cacheName) {
             if(staticCacheName !== cacheName){
                 return caches.delete(cacheName);
+                //console.log(cacheName);
             }
           })
         );
@@ -48,7 +49,7 @@ self.addEventListener('install', event => {
         caches.match(event.request).then(response => {
           if (response) {
             // respond with the index page skeleton in cache
-             event.respondWith(caches.match('/index.html'));
+             event.respondWith(caches.match('/ndex.html'));
              return;
           }
         });
@@ -64,4 +65,4 @@ self.addEventListener('install', event => {
       })
     );
 
-});
+  });
